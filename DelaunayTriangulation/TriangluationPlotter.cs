@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 
 namespace DelaunayTriangulation
 {
-    class TriangluationPlotter : UserControl
+    class TriangulationPlotter : UserControl
     {
         private class Vector
         {
@@ -44,10 +43,19 @@ namespace DelaunayTriangulation
             }
         }
 
+		private enum State {
+			Initial,
+			Triangulating
+		};
+
         private SortedSet<PointF> points = new SortedSet<PointF>(PointComparer.INSTANCE);
         private SortedSet<PointF> selectedPoints = new SortedSet<PointF>(PointComparer.INSTANCE);
+		private State state = State.Initial;
 
-        public TriangluationPlotter()
+		protected bool maxWasAchieved = false;
+		protected int maxEdges = int.MaxValue;
+
+        public TriangulationPlotter()
         {
             var flags = ControlStyles.AllPaintingInWmPaint
                       | ControlStyles.DoubleBuffer
@@ -69,11 +77,12 @@ namespace DelaunayTriangulation
         protected override void OnMouseDown(MouseEventArgs e)
         {
             base.OnMouseDown(e);
-            if (ModifierKeys.HasFlag(Keys.Shift))
-                RemoveAt(e.Location);
-            else
-                points.Add(e.Location);
-            Invalidate();
+			if (State.Initial != state) return;
+			if (ModifierKeys.HasFlag(Keys.Shift))
+				RemoveAt(e.Location);
+			else
+				points.Add(e.Location);
+			Invalidate();
         }
 
         private void DrawDiamond(Graphics g, PointF p, float s)
@@ -87,7 +96,7 @@ namespace DelaunayTriangulation
             g.DrawPolygon(Pens.Black, diamond);
         }
 
-        private static HashSet<Tuple<PointF, PointF>> Triangulate(SortedSet<PointF> points)
+        private static HashSet<Tuple<PointF, PointF>> Triangulate(SortedSet<PointF> points, int maxEdges)
         {
             var triangulation = new HashSet<Tuple<PointF, PointF>>();
             var activeEdges = new HashSet<Tuple<PointF, PointF>>();
@@ -103,7 +112,7 @@ namespace DelaunayTriangulation
                     .First();
                 activeEdges.Add(new Tuple<PointF, PointF>(a, b));
             }
-            while (0 != activeEdges.Count())
+            while (0 != activeEdges.Count() && triangulation.Count() < maxEdges)
             {
                 var minCos = 1.0f;
                 Tuple<PointF, PointF> minEdge = null;
@@ -158,11 +167,44 @@ namespace DelaunayTriangulation
             base.OnPaint(e);
             Graphics g = e.Graphics;
             g.Clear(SystemColors.Control);
-            if (2 <= points.Count)
-                foreach (var edge in Triangulate(points))
-                    g.DrawLine(Pens.Black, edge.Item1, edge.Item2);
+			if (2 <= points.Count)
+			{
+				var triangulation = Triangulate(points, maxEdges);
+				foreach (var edge in triangulation)
+					g.DrawLine(Pens.Black, edge.Item1, edge.Item2);
+				maxWasAchieved = triangulation.Count < maxEdges;
+			}
             foreach (var p in points)
                 DrawDiamond(g, p, 4);
         }
+
+		private class TriangulationTimer : Timer
+		{
+			private TriangulationPlotter plotter;
+
+			public TriangulationTimer(TriangulationPlotter plotter) : base()
+			{
+				this.plotter = plotter;
+			}
+
+			protected override void OnTick(EventArgs e)
+			{
+				base.OnTick(e);
+				if (plotter.maxWasAchieved) return;
+				++plotter.maxEdges;
+				plotter.Invalidate();
+				Start();
+			}
+		}
+
+		public void Demo()
+		{
+			if (State.Initial != state) return;
+			maxEdges = 1;
+			maxWasAchieved = false;
+			Timer t = new TriangulationTimer(this);
+			t.Interval = 1000;
+			t.Start();
+		}
     }
 }

@@ -8,5 +8,10 @@ namespace DelaunayTriangulation
         {
             InitializeComponent();
         }
-    }
+
+		private void btnDemo_Click(object sender, System.EventArgs e)
+		{
+			triangluationPlotter1.Demo();
+		}
+	}
 }
